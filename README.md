@@ -16,4 +16,7 @@ This project involves developing an AI agent  that can play the Flappy Bird game
 3. AI Agent: The AI agent, controlled by a neural network, learns to navigate the bird through the pipes by making real-time decisions based on the game state.
 4. Training Process: The NEAT algorithm evolves the neural networks over generations, selecting the most successful ones and applying genetic operations (mutation and crossover) to create better-performing networks.
 
+How?
+1.using Neat and pygame
+
 I wanted to inform you that I might be transitioning to a different project soon. However, at this stage, I am currently focused on creating graphics for this 2D game made in Python. 
