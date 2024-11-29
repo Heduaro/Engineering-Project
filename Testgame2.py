@@ -1,21 +1,29 @@
 import pygame
-import random
+import neat
 import time
+import os
+import random
+import numpy as np
+from leap_ec import Individual, Representation, ops
+from leap_ec.simple import generational_ea
+from leap_ec.decoder import IdentityDecoder
+
 pygame.font.init()
 
-# Game configuration
+# Window dimensions
 WIN_WIDTH = 500
 WIN_HEIGHT = 800
 
-# Changing the size of objects
-BIRD_IMGS = [pygame.transform.scale2x(pygame.image.load("imgs/bird1.png")),
-             pygame.transform.scale2x(pygame.image.load("imgs/bird2.png")),
-             pygame.transform.scale2x(pygame.image.load("imgs/bird3.png"))]
-PIPE_IMG = pygame.transform.scale2x(pygame.image.load("imgs/pipe.png"))
-BASE_IMG = pygame.transform.scale2x(pygame.image.load("imgs/base.png"))
-BG_IMG = pygame.transform.scale2x(pygame.image.load("imgs/BG.png"))
+# Load images
+BIRD_IMGS = [pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png"))),
+             pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird2.png"))),
+             pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird3.png")))]
+PIPE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "pipe.png")))
+BASE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "base.png")))
+BG_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "BG.png")))
 
 STAT_FONT = pygame.font.SysFont("comicsans", 50)
+
 
 # Bird class
 class Bird:
@@ -33,7 +41,6 @@ class Bird:
         self.height = self.y
         self.img_count = 0
         self.img = self.IMGS[0]
-        self.fitness = 0  # Fitness value for evolutionary algorithm
 
     def jump(self):
         self.vel = -10.5
@@ -42,7 +49,7 @@ class Bird:
 
     def move(self):
         self.tick_count += 1
-        d = self.vel * self.tick_count + 1.5 * self.tick_count ** 2
+        d = self.vel * self.tick_count + 1.5 * self.tick_count**2
         if d >= 16:
             d = 16
         if d < 0:
@@ -81,7 +88,86 @@ class Bird:
         return pygame.mask.from_surface(self.img)
 
 
-# Pipe class
+def main(genomes, config):
+    nets = []
+    ge = []
+    birds = []
+
+    for _, g in genomes:
+        net = neat.nn.FeedForwardNetwork.create(g, config)
+        nets.append(net)
+        birds.append(Bird(230, 350))
+        g.fitness = 0
+        ge.append(g)
+
+    bird = Bird(230, 350)
+    base = Base(730)
+    pipes = [Pipe(600)]
+    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+    clock = pygame.time.Clock()
+
+    score = 0
+    run = True
+    while run:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                pygame.quit()
+                quit()
+
+        pipe_ind = 0
+        if len(birds) > 0:
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+                pipe_ind = 1
+        else:
+            run = False
+            break
+
+        for x, bird in enumerate(birds):
+            bird.move()
+            ge[x].fitness += 0.1
+            output = nets[x].activate((bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
+            if output[0] > 0.5:
+                bird.jump()
+
+        add_pipe = False
+        rem = []
+        for pipe in pipes:
+            for x, bird in enumerate(birds):
+                if pipe.collide(bird):
+                    ge[x].fitness -= 1
+                    birds.pop(x)
+                    nets.pop(x)
+                    ge.pop(x)
+
+            if not pipe.passed and pipe.x < bird.x:
+                pipe.passed = True
+                add_pipe = True
+
+            if pipe.x + pipe.PIPE_TOP.get_width() < 0:
+                rem.append(pipe)
+
+            pipe.move()
+
+        if add_pipe:
+            score += 1
+            for g in ge:
+                g.fitness += 5
+            pipes.append(Pipe(600))
+
+        for r in rem:
+            pipes.remove(r)
+
+        for x, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
+                birds.pop(x)
+                nets.pop(x)
+                ge.pop(x)
+
+        base.move()
+        draw_window(win, birds, pipes, base, score)
+
 class Pipe:
     GAP = 200
     VEL = 5
@@ -124,7 +210,6 @@ class Pipe:
         return False
 
 
-# Base class (the ground)
 class Base:
     VEL = 5
     WIDTH = BASE_IMG.get_width()
@@ -146,6 +231,63 @@ class Base:
     def draw(self, win):
         win.blit(self.IMG, (self.x1, self.y))
         win.blit(self.IMG, (self.x2, self.y))
+    
+def run_neat(config_path):
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
+    p = neat.Population(config)
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+    winner = p.run(main, 50)
+
+def manual_play():
+    bird = Bird(230, 350)
+    base = Base(730)
+    pipes = [Pipe(600)]
+    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+    clock = pygame.time.Clock()
+    score = 0
+    run = True
+
+    while run:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                pygame.quit()
+                quit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    bird.jump()
+
+        bird.move()
+
+        add_pipe = False
+        rem = []
+        for pipe in pipes:
+            if pipe.collide(bird):
+                run = False
+            if not pipe.passed and pipe.x < bird.x:
+                pipe.passed = True
+                add_pipe = True
+
+            if pipe.x + pipe.PIPE_TOP.get_width() < 0:
+                rem.append(pipe)
+            pipe.move()
+
+        if add_pipe:
+            score += 1
+            pipes.append(Pipe(600))
+
+        for r in rem:
+            pipes.remove(r)
+
+        if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
+            run = False
+
+        base.move()
+        draw_window(win, [bird], pipes, base, score)
+
 
 
 # Draw window
@@ -161,120 +303,145 @@ def draw_window(win, birds, pipes, base, score):
     pygame.display.update()
 
 
-# Population for evolutionary algorithm
-class Population:
-    def __init__(self, size, mutation_rate):
-        self.size = size
-        self.mutation_rate = mutation_rate
-        self.birds = [Bird(230, 350) for _ in range(size)]
-        self.generation = 0
-
-    def evolve(self):
-        # Perform selection, crossover, and mutation to evolve the population
-        self.selection()
-        self.crossover()
-        self.mutation()
-
-    def selection(self):
-        # Sort birds based on fitness and select top birds to mate
-        self.birds = sorted(self.birds, key=lambda bird: bird.fitness, reverse=True)
-        self.birds = self.birds[:self.size // 2]  # Keep top 50% of birds
-
-    def crossover(self):
-        # Perform crossover to create new birds
-        new_birds = []
-        for i in range(self.size // 2):
-            parent1 = self.birds[i]
-            parent2 = self.birds[random.randint(0, len(self.birds) - 1)]
-            child = Bird(230, 350)  # Create a new bird from parents (using some logic here)
-            new_birds.append(child)
-        self.birds.extend(new_birds)
-
-    def mutation(self):
-        # Mutate birds' properties
-        for bird in self.birds:
-            if random.random() < self.mutation_rate:
-                bird.jump()  # Mutate by making a random jump
-
-    def get_best_bird(self):
-        return sorted(self.birds, key=lambda bird: bird.fitness, reverse=True)[0]
-
-
-# Main evolutionary algorithm
-def evolutionary_algorithm():
-    population = Population(size=20, mutation_rate=0.01)  # Start with 20 birds
-    pipes = [Pipe(600)]
+# Fitness function for LEAP EA
+def evaluate_individual(individual):
+    bird = Bird(230, 350)
     base = Base(730)
-    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
-    clock = pygame.time.Clock()
-
+    pipes = [Pipe(600)]
     score = 0
-    generations = 50  # Set to 50 generations
-    current_generation = 0  # Track the current generation
+    run = True
 
-    while current_generation < generations:
-        clock.tick(30)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
+    while run:
+        pipe_ind = 0
+        if len(pipes) > 1 and bird.x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+            pipe_ind = 1
 
-        # Move birds and evolve population
-        for bird in population.birds:
-            bird.move()
-            bird.fitness += 0.1  # Increase fitness over time
+        # Decision-making based on weights
+        weights = individual.decode()
+        input_vector = np.array([bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)])
+        decision = np.dot(weights, input_vector) > 0
 
-            # Birds should jump randomly or based on some criteria
-            if random.random() < 0.1:  # Random chance to make a jump
-                bird.jump()
+        if decision:
+            bird.jump()
+
+        bird.move()
 
         add_pipe = False
         rem = []
         for pipe in pipes:
-            for bird in population.birds:
-                if pipe.collide(bird):
-                    population.birds.remove(bird)
-
-            if not pipe.passed and pipe.x < population.birds[0].x:
+            if pipe.collide(bird):
+                run = False
+            if not pipe.passed and pipe.x < bird.x:
                 pipe.passed = True
                 add_pipe = True
+
             if pipe.x + pipe.PIPE_TOP.get_width() < 0:
                 rem.append(pipe)
             pipe.move()
 
         if add_pipe:
-            pipes.append(Pipe(WIN_WIDTH))
+            score += 1
+            pipes.append(Pipe(600))
 
         for r in rem:
             pipes.remove(r)
 
-        if len(population.birds) == 0:  # If all birds are dead, evolve the population
-            print(f"Generation {current_generation + 1} - Evolving population...")
-            population.evolve()
-            current_generation += 1  # Increment generation count
+        if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
+            run = False
 
-        # Draw everything
         base.move()
-        draw_window(win, population.birds, pipes, base, score)
 
-    print("Evolution complete.")
-    pygame.quit()
-    quit()
+    individual.fitness = score
+    return score
 
 
-# Start the game and evolutionary algorithm
+# Run LEAP EA
+def run_ea():
+    from leap_ec.algorithm import generational_ea
+    from leap_ec.problem import FunctionProblem
+    from leap_ec import Individual, Representation, ops
+    import random
+
+    # Define a fitness function
+    def fitness(ind):
+        return random.random()  # Replace with your custom fitness function
+
+    # Define the genome initialization function
+    def initialize_genome():
+        return [random.uniform(-1, 1) for _ in range(3)]  # Example: 3 genes with random values
+
+    # Define a decoder function
+    def decoder(individual):
+        return individual.genes  # Custom decoder logic
+
+    # Create the Representation object with the genome initialization function
+    rep = Representation(initialize=initialize_genome)
+
+    # Initialize individuals with random genotypes using the Representation's initialize function
+    population = Individual.create_population(
+        10,  # Population size
+        rep.initialize,  # Pass the initialize function from Representation
+        decoder=decoder,  # Pass the decoder function
+        problem=FunctionProblem(fitness, maximize=True)  # Problem with fitness function
+    )
+
+    # Run the evolutionary algorithm
+    for gen, pop in enumerate(
+        generational_ea(
+            max_generations=50,
+            pop=population,
+            problem=FunctionProblem(fitness, maximize=True),
+            operators=[
+                ops.tournament_selection,
+                ops.clone,
+                ops.uniform_crossover(p_swap=0.5),
+                ops.gaussian_mutation(std=0.1, hard_bounds=(-1, 1)),
+                ops.evaluate,
+                ops.pool(size=10)
+            ]
+        )
+    ):
+        print(f'Generation {gen}: Best fitness: {max(ind.fitness for ind in pop)}')
+
+
+# Main menu
 def show_menu():
-    run = True
-    while run:
-        draw_window(pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT)), [], [], Base(730), 0)
+    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+    pygame.display.set_caption("Flappy Bird Game")
+
+    font = pygame.font.SysFont("comicsans", 40)
+    title_text = font.render("Flappy Bird", True, (255, 255, 255))
+    neat_text = font.render("1. Play using NEAT", True, (255, 255, 255))
+    ea_text = font.render("2. Play using EA", True, (255, 255, 255))
+    manual_text = font.render("3. Play by Yourself", True, (255, 255, 255))
+    quit_text = font.render("Q. Quit", True, (255, 255, 255))
+
+    while True:
+        win.blit(BG_IMG, (0, 0))
+        win.blit(title_text, (WIN_WIDTH // 2 - title_text.get_width() // 2, 100))
+        win.blit(neat_text, (WIN_WIDTH // 2 - neat_text.get_width() // 2, 200))
+        win.blit(ea_text, (WIN_WIDTH // 2 - ea_text.get_width() // 2, 300))
+        win.blit(manual_text, (WIN_WIDTH // 2 - manual_text.get_width() // 2, 400))
+        win.blit(quit_text, (WIN_WIDTH // 2 - quit_text.get_width() // 2, 500))
+
+        pygame.display.update()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
+                pygame.quit()
+                quit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    config_path = "config-feedforward.txt"
+                    run_neat(config_path)
+                elif event.key == pygame.K_2:
+                    run_ea()
+                elif event.key == pygame.K_3:
+                    manual_play()
+                elif event.key == pygame.K_q:
+                    pygame.quit()
+                    quit()
 
-        evolutionary_algorithm()  # Start evolutionary algorithm
 
-    pygame.quit()
-    quit()
-
-
-show_menu()
+if __name__ == "__main__":
+    show_menu()
