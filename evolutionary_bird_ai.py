@@ -1,7 +1,7 @@
 import pygame
 import random
 import os
-from Testgame2 import Bird, Pipe, Base, draw_window
+from Testgame3 import Bird, Pipe, Base, draw_window
 
 # Constants
 WIN_WIDTH = 500
