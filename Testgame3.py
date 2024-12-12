@@ -2,6 +2,7 @@ import pygame
 import neat
 import time
 import os
+import csv
 import random
 pygame.font.init()
 
@@ -150,56 +151,8 @@ def run_neat(config_path):
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
-    winner = p.run(main, 50)
-
-def manual_play():
-    bird = Bird(230, 350)
-    base = Base(730)
-    pipes = [Pipe(600)]
-    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
-    clock = pygame.time.Clock()
-    score = 0
-    run = True
-
-    while run:
-        clock.tick(30)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-                pygame.quit()
-                quit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    bird.jump()
-
-        bird.move()
-
-        add_pipe = False
-        rem = []
-        for pipe in pipes:
-            if pipe.collide(bird):
-                run = False
-            if not pipe.passed and pipe.x < bird.x:
-                pipe.passed = True
-                add_pipe = True
-
-            if pipe.x + pipe.PIPE_TOP.get_width() < 0:
-                rem.append(pipe)
-            pipe.move()
-
-        if add_pipe:
-            score += 1
-            pipes.append(Pipe(600))
-
-        for r in rem:
-            pipes.remove(r)
-
-        if bird.y + bird.img.get_height() >= 730 or bird.y < 0:
-            run = False
-
-        base.move()
-        draw_window(win, [bird], pipes, base, score)
-
+    winner = p.run(main, 10)  # Make sure `main` is passed here
+    return winner
 
 # Draw window
 def draw_window(win, birds, pipes, base, score):
@@ -213,11 +166,28 @@ def draw_window(win, birds, pipes, base, score):
         bird.draw(win)
     pygame.display.update()
 
+def init_csv():
+    if not os.path.exists('csv'):
+        os.makedirs('csv')  # Create the folder if it doesn't exist
+    with open('csv/NEAT.csv', mode='w', newline='') as file:
+        writer = csv.writer(file)
+        # Write the header for the CSV file
+        writer.writerow(['Generation', 'Genome ID', 'Fitness'])
+
+# Function to log data to the CSV file
+def log_to_csv(gen, generation, fitness):
+    with open('csv/NEAT.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        # Log the genome ID, generation, and fitness
+        writer.writerow([generation, gen.key, fitness])
+
 # Main function for NEAT
 def main(genomes, config):
     nets = []
     ge = []
     birds = []
+
+    init_csv()
 
     for _, g in genomes:
         net = neat.nn.FeedForwardNetwork.create(g, config)
@@ -233,6 +203,7 @@ def main(genomes, config):
     clock = pygame.time.Clock()
 
     score = 0
+    generation = 1
     run = True
     while run:
         clock.tick(30)
@@ -294,15 +265,19 @@ def main(genomes, config):
         base.move()
         draw_window(win, birds, pipes, base, score)
 
-# NEAT configuration loading
-def run_neat(config_path):
-    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, config_path)
-    p = neat.Population(config)
-    p.add_reporter(neat.StdOutReporter(True))
-    stats = neat.StatisticsReporter()
-    p.add_reporter(stats)
-    winner = p.run(main, 50)
-
+        for g in ge:
+            log_to_csv(g, generation, g.fitness)
+ # Check if the score reached 
+        if score >= 10:
+            run = False
+            winner_genome = max(ge, key=lambda g: g.fitness)  # Get the winner genome based on fitness
+            print(f"Winner: Genome {winner_genome}")
+            winner_text = STAT_FONT.render(f"Winner: Genome {winner_genome}", True, (255, 255, 255))
+            win.blit(winner_text, (WIN_WIDTH // 2 - winner_text.get_width() // 2, WIN_HEIGHT // 2))
+            pygame.display.update()
+            pygame.time.delay(3000)  # Wait for 3 seconds before quitting
+            break
+        generation += 1
 # Manual play function
 def manual_play():
     bird = Bird(230, 350)

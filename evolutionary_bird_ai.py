@@ -1,13 +1,17 @@
 import pygame
 import random
 import os
-from Testgame3 import Bird, Pipe, Base, draw_window
+import csv
+from Testgame import Bird, Pipe, Base, draw_window
+import time
 
 # Constants
 WIN_WIDTH = 500
 WIN_HEIGHT = 800
-GENERATION_SIZE = 10
-MUTATION_RATE = 0.1
+GENERATION_SIZE = 20
+MUTATION_RATE = 0.05  # Reduced mutation rate
+PIPE_SPEED = 2  # Reduced pipe speed
+BIRD_REACTION_TIME = 1  # Allow birds more time to react
 
 # Helper functions
 def mutate(weights):
@@ -28,7 +32,7 @@ class BirdController:
         self.fitness = 0
 
     def decide(self, bird_y, pipe_top, pipe_bottom):
-        """Simple linear decision model."""
+        """Improved decision model for jumping."""
         inputs = [bird_y / WIN_HEIGHT, pipe_top / WIN_HEIGHT, pipe_bottom / WIN_HEIGHT]
         decision = sum(w * i for w, i in zip(self.weights, inputs))
         return decision > 0  # Returns True to jump
@@ -38,8 +42,9 @@ class EvolutionaryAlgorithm:
     def __init__(self, population_size):
         self.population_size = population_size
         self.generation = 0
-        self.population = []  # List of BirdController objects
-        self.birds = []  # List of Bird objects during simulation
+        self.population = []
+        self.birds = []
+        self.deaths = 0
 
     def initialize_population(self):
         """Initialize the population with random BirdControllers."""
@@ -47,25 +52,25 @@ class EvolutionaryAlgorithm:
 
     def evaluate_generation(self):
         """Evaluate the current generation by running a simulation."""
+        if not self.population:
+            return
+
         self.birds = [Bird(230, 350) for _ in range(len(self.population))]
         base = Base(730)
         pipes = [Pipe(600)]
         win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
         clock = pygame.time.Clock()
         score = 0
+
+        start_time = time.time()
         run = True
 
-        while run:
+        while run and len(self.birds) > 0:  # Continue while there are birds alive
             clock.tick(30)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     quit()
-
-            # Check if there are no birds left
-            if len(self.birds) == 0:
-                run = False
-                break
 
             # Determine which pipe to use for decisions
             pipe_ind = 0
@@ -79,13 +84,13 @@ class EvolutionaryAlgorithm:
                 if self.population[i].decide(bird.y, pipe.height, pipe.bottom):
                     bird.jump()
 
-            # Pipe logic
+            # Handle pipes
             add_pipe = False
             rem = []
             for pipe in pipes:
-                for i in reversed(range(len(self.birds))):  # Iterate in reverse to avoid index issues
+                for i in reversed(range(len(self.birds))):
                     if pipe.collide(self.birds[i]):
-                        self.population[i].fitness = score
+                        self.population[i].fitness = score + (WIN_WIDTH - abs(self.birds[i].x - pipe.x)) / WIN_WIDTH
                         self.birds.pop(i)
                         self.population.pop(i)
 
@@ -105,8 +110,8 @@ class EvolutionaryAlgorithm:
             for r in rem:
                 pipes.remove(r)
 
-            # Check if birds hit the ground or fly out of bounds
-            for i in reversed(range(len(self.birds))):  # Iterate in reverse to avoid index issues
+            # Check for out-of-bounds birds
+            for i in reversed(range(len(self.birds))):
                 if self.birds[i].y + self.birds[i].img.get_height() >= 730 or self.birds[i].y < 0:
                     self.population[i].fitness = score
                     self.birds.pop(i)
@@ -115,15 +120,50 @@ class EvolutionaryAlgorithm:
             base.move()
             draw_window(win, self.birds, pipes, base, score)
 
+        self.log_generation_results(time.time() - start_time, score)
+
+    def log_generation_results(self, generation_duration, score):
+        """Log the results of the current generation."""
+        if len(self.population) > 0:
+            avg_fitness = sum([bc.fitness for bc in self.population]) / len(self.population)
+            best_individual = max(self.population, key=lambda bc: bc.fitness)
+            best_fitness = best_individual.fitness
+            best_weights = best_individual.weights
+
+            # Prepare data for CSV
+            generation_data = {
+                'Generation': self.generation,
+                'Generation Duration': generation_duration,
+                'Average Fitness': avg_fitness,
+                'Best Fitness': best_fitness,
+                'Score': score
+            }
+
+            # Save results to CSV
+            self.save_to_csv(generation_data)
+
+    def save_to_csv(self, data):
+        """Save the generation results to a CSV file."""
+        os.makedirs("csv", exist_ok=True)
+        file_path = os.path.join("csv", "EA.csv")
+
+        # Check if file exists to write header
+        file_exists = os.path.isfile(file_path)
+
+        with open(file_path, mode='a', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=data.keys())
+            if not file_exists:
+                writer.writeheader()  # Write header if file does not exist
+            writer.writerow(data)
+
     def reproduce(self):
         """Create the next generation."""
-        # Sort population by fitness
-        self.population.sort(key=lambda bc: bc.fitness, reverse=True)
+        if len(self.population) == 0:
+            return
 
-        # Select top performers
+        self.population.sort(key=lambda bc: bc.fitness, reverse=True)
         next_generation = self.population[:2]
 
-        # Create children from top performers
         while len(next_generation) < self.population_size:
             parent1, parent2 = random.choices(self.population[:5], k=2)
             child_weights = crossover(parent1.weights, parent2.weights)
@@ -135,11 +175,10 @@ class EvolutionaryAlgorithm:
     def run(self):
         """Run the evolutionary algorithm for a fixed number of generations."""
         self.initialize_population()
-        max_generations = 10  # Set the maximum number of generations
+        max_generations = 10
 
         try:
             while self.generation < max_generations:
-                print(f"Generation {self.generation + 1}")
                 self.evaluate_generation()
                 self.reproduce()
                 self.generation += 1
@@ -148,8 +187,9 @@ class EvolutionaryAlgorithm:
         finally:
             print("Simulation complete.")
 
-
 if __name__ == "__main__":
     pygame.font.init()
-    ea = EvolutionaryAlgorithm(GENERATION_SIZE)
-    ea.run()
+    for run_number in range(10):  # Run the simulation 10 times
+        print(f"Starting simulation run {run_number + 1}...")
+        ea = EvolutionaryAlgorithm(GENERATION_SIZE)
+        ea.run()
