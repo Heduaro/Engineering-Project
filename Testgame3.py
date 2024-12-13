@@ -360,7 +360,7 @@ def show_menu():
                     run_neat(config_path)
                 elif event.key == pygame.K_2:
                     from evolutionary_bird_ai import EvolutionaryAlgorithm
-                    ea = EvolutionaryAlgorithm(population_size=20)
+                    ea = EvolutionaryAlgorithm(population_size=500)
                     ea.run()
                 elif event.key == pygame.K_3:
                     manual_play()

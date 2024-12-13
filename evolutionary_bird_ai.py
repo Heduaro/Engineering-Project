@@ -2,7 +2,7 @@ import pygame
 import random
 import os
 import csv
-from Testgame import Bird, Pipe, Base, draw_window
+from Testgame3 import Bird, Pipe, Base, draw_window
 import time
 
 # Constants
