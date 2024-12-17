@@ -2,12 +2,12 @@ import pygame
 import random
 import os
 import csv
-from Testgame import Bird, Pipe, Base, draw_window
+from Testgame3 import PlayerBird, Pipe, Base, draw_window
 import time
 
 # Constants
-WIN_WIDTH = 500
-WIN_HEIGHT = 800
+WINDOW_WIDTH = 500
+WINDOW_HEIGHT = 800
 GENERATION_SIZE = 20
 MUTATION_RATE = 0.05  # Reduced mutation rate
 PIPE_SPEED = 2  # Reduced pipe speed
@@ -26,14 +26,14 @@ def crossover(parent1, parent2):
     return [random.choice([w1, w2]) for w1, w2 in zip(parent1, parent2)]
 
 # Bird Controller class
-class BirdController:
+class BirdControll:
     def __init__(self, weights=None):
         self.weights = weights if weights else [random.uniform(-1, 1) for _ in range(3)]
         self.fitness = 0
 
     def decide(self, bird_y, pipe_top, pipe_bottom):
         """Improved decision model for jumping."""
-        inputs = [bird_y / WIN_HEIGHT, pipe_top / WIN_HEIGHT, pipe_bottom / WIN_HEIGHT]
+        inputs = [bird_y / WINDOW_HEIGHT, pipe_top / WINDOW_HEIGHT, pipe_bottom / WINDOW_HEIGHT]
         decision = sum(w * i for w, i in zip(self.weights, inputs))
         return decision > 0  # Returns True to jump
 
@@ -47,18 +47,18 @@ class EvolutionaryAlgorithm:
         self.deaths = 0
 
     def initialize_population(self):
-        """Initialize the population with random BirdControllers."""
-        self.population = [BirdController() for _ in range(self.population_size)]
+        """Initialize the population with random BirdController."""
+        self.population = [BirdControll() for _ in range(self.population_size)]
 
     def evaluate_generation(self):
         """Evaluate the current generation by running a simulation."""
         if not self.population:
             return
 
-        self.birds = [Bird(230, 350) for _ in range(len(self.population))]
+        self.birds = [PlayerBird(230, 350) for _ in range(len(self.population))]
         base = Base(730)
         pipes = [Pipe(600)]
-        win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+        win = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         clock = pygame.time.Clock()
         score = 0
 
@@ -77,9 +77,9 @@ class EvolutionaryAlgorithm:
             if len(pipes) > 1 and self.birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
                 pipe_ind = 1
 
-            # Move birds and make decisions
+            # update_position birds and make decisions
             for i, bird in enumerate(self.birds):
-                bird.move()
+                bird.update_position()
                 pipe = pipes[pipe_ind]
                 if self.population[i].decide(bird.y, pipe.height, pipe.bottom):
                     bird.jump()
@@ -90,7 +90,7 @@ class EvolutionaryAlgorithm:
             for pipe in pipes:
                 for i in reversed(range(len(self.birds))):
                     if pipe.collide(self.birds[i]):
-                        self.population[i].fitness = score + (WIN_WIDTH - abs(self.birds[i].x - pipe.x)) / WIN_WIDTH
+                        self.population[i].fitness = score + (WINDOW_WIDTH - abs(self.birds[i].x - pipe.x)) / WINDOW_WIDTH
                         self.birds.pop(i)
                         self.population.pop(i)
 
@@ -101,7 +101,7 @@ class EvolutionaryAlgorithm:
                 if pipe.x + pipe.PIPE_TOP.get_width() < 0:
                     rem.append(pipe)
 
-                pipe.move()
+                pipe.update_position()
 
             if add_pipe:
                 score += 1
@@ -117,7 +117,7 @@ class EvolutionaryAlgorithm:
                     self.birds.pop(i)
                     self.population.pop(i)
 
-            base.move()
+            base.update_position()
             draw_window(win, self.birds, pipes, base, score)
 
         self.log_generation_results(time.time() - start_time, score)
@@ -168,7 +168,7 @@ class EvolutionaryAlgorithm:
             parent1, parent2 = random.choices(self.population[:5], k=2)
             child_weights = crossover(parent1.weights, parent2.weights)
             child_weights = mutate(child_weights)
-            next_generation.append(BirdController(child_weights))
+            next_generation.append(BirdControll(child_weights))
 
         self.population = next_generation
 

@@ -16,14 +16,14 @@ PIPE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "pipe
 BASE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "base.png")))
 BG_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "BG.png")))
 
-STAT_FONT = pygame.font.SysFont("comicsans", 50)
+SCORE_FONT = pygame.font.SysFont("comicsans", 50)
 
 # Bird class
 class Bird:
     IMGS = BIRD_IMGS
     MAX_ROTATION = 25
     ROT_VEL = 20
-    ANIMATION_TIME = 5
+    FRAME_RATE = 5
 
     def __init__(self, x, y):
         self.x = x
@@ -57,21 +57,21 @@ class Bird:
 
     def draw(self, win):
         self.img_count += 1
-        if self.img_count < self.ANIMATION_TIME:
+        if self.img_count < self.FRAME_RATE:
             self.img = self.IMGS[0]
-        elif self.img_count < self.ANIMATION_TIME*2:
+        elif self.img_count < self.FRAME_RATE*2:
             self.img = self.IMGS[1]
-        elif self.img_count < self.ANIMATION_TIME*3:
+        elif self.img_count < self.FRAME_RATE*3:
             self.img = self.IMGS[2]
-        elif self.img_count < self.ANIMATION_TIME*4:
+        elif self.img_count < self.FRAME_RATE*4:
             self.img = self.IMGS[1]
-        elif self.img_count == self.ANIMATION_TIME*4 + 1:
+        elif self.img_count == self.FRAME_RATE*4 + 1:
             self.img = self.IMGS[0]
             self.img_count = 0
 
         if self.tilt <= -80:
             self.img = self.IMGS[1]
-            self.img_count = self.ANIMATION_TIME*2
+            self.img_count = self.FRAME_RATE*2
 
         rotated_image = pygame.transform.rotate(self.img, self.tilt)
         new_rect = rotated_image.get_rect(center=self.img.get_rect(topleft=(self.x, self.y)).center)
@@ -148,7 +148,7 @@ def draw_window(win, birds, pipes, base, score):
     win.blit(BG_IMG, (0, 0))
     for pipe in pipes:
         pipe.draw(win)
-    text = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
+    text = SCORE_FONT.render("Score: " + str(score), 1, (255, 255, 255))
     win.blit(text, (WIN_WIDTH - 10 - text.get_width(), 10))
     base.draw(win)
     for bird in birds:
